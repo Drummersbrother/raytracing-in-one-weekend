@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+# Output from my vim cmake plugin
+Debug/
+
