@@ -156,6 +156,12 @@ class flip_face: public hittable {
         virtual bool bounding_box(double time0, double time1, aabb& output_box) const override {
             return ptr->bounding_box(time0, time1, output_box);
         }
+        virtual double pdf_value(const point3& o, const vec3& v) const override {
+            return ptr->pdf_value(o, v);
+        }
+        virtual vec3 random(const vec3& o) const override {
+            return ptr->random(o);
+        }
     public:
         shared_ptr<hittable> ptr;
 };

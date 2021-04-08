@@ -7,10 +7,12 @@
 #include "material.h"
 #include "moving_sphere.h"
 #include "aarect.h"
+#include "triangle.h"
 #include "box.h"
 #include "constant_medium.h"
 #include "bvh.h"
 #include "pdf.h"
+#include "rtw_stb_obj_loader.h"
 
 #include <omp.h>
 #include <iostream>
@@ -26,11 +28,11 @@ color ray_color(
         int depth) {
     hit_record rec;
     
+
     if (depth <= 0){
         return color(0, 0, 0);
     }
-
-    if(!world.hit(r, 0.0001, infinity, rec)){
+    if(!world.hit(r, 0.000001, infinity, rec)){
         return background;
     }
 
@@ -47,7 +49,7 @@ color ray_color(
     }
 
     auto light_ptr = make_shared<hittable_pdf>(lights, rec.p);
-    mixture_pdf p(light_ptr, srec.pdf_ptr, 0.6);
+    mixture_pdf p(light_ptr, srec.pdf_ptr, 0.8);
 
     ray scattered = ray(rec.p, p.generate(), r.time());
     auto pdf_val = p.value(scattered.direction());
@@ -227,7 +229,7 @@ hittable_list rt_tnw_final_scene() {
     boundary = make_shared<sphere>(point3(0, 0, 0), 5000, make_shared<dielectric>(1.5));
     objects.add(make_shared<constant_medium>(boundary, .0001, color(1,1,1)));
 
-    auto emat = make_shared<lambertian>(make_shared<image_texture>("../textures/earthmap.jpg"));
+    auto emat = make_shared<lambertian>(make_shared<image_texture>("textures/earthmap.jpg"));
     objects.add(make_shared<sphere>(point3(400,200,400), 100, emat));
     auto pertext = make_shared<marble_texture>(0.1);
     objects.add(make_shared<sphere>(point3(220,280,300), 80, make_shared<lambertian>(pertext)));
@@ -293,17 +295,153 @@ hittable_list cornell_box_lights(){
     return lights;
 }
 
+hittable_list triangle_test() {
+    hittable_list objects;
+
+    auto light = make_shared<diffuse_light>(color(1, 1, 1));
+    auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    auto blue = make_shared<lambertian>(color(0.1, 0.1, 0.7));
+
+    objects.add(make_shared<xy_rect>(-10, 10, -10, 10, 0, grey));
+    triangle light_tri = triangle(vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 1, 1), light);
+    objects.add(make_shared<triangle>(light_tri));
+
+    objects.add(make_shared<triangle>(triangle(vec3(1, 0, 0), vec3(1, 0, 2), vec3(1, 2, 2), blue)));
+
+    return objects;
+}
+
+hittable_list triangle_test_lights() {
+    hittable_list lights;
+
+    triangle test_tri = triangle(vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 1, 1), shared_ptr<material>());
+    lights.add(make_shared<triangle>(test_tri));
+
+    return lights;
+}
+
+hittable_list obj_loader_test(){
+    hittable_list objects;
+
+    auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    auto light = make_shared<diffuse_light>(color(1, 1, 1)*10);
+    objects.add(make_shared<xz_rect>(-10, 10, -10, 10, -1, grey));
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, light)));
+    
+    objects.add(load_model_from_file("../models/suzanne.obj", grey, true));
+
+    return objects;
+}
+
+hittable_list obj_loader_test_lights(){
+    hittable_list lights;
+
+    lights.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, shared_ptr<material>())));
+
+    return lights;
+}
+
+hittable_list boeing_test_world(){
+    hittable_list objects;
+
+    auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    auto light = make_shared<diffuse_light>(color(1, 1, 1)*100);
+    int ground_size = 80;
+    objects.add(make_shared<xy_rect>(-ground_size/2., ground_size/2., -ground_size/2., ground_size/2., -8, grey));
+    objects.add(make_shared<flip_face>(make_shared<xy_rect>(-5, 5, -5, 5, 40, light)));
+    
+    objects.add(load_model_from_file("../models/boeing_737_900.obj", grey, true));
+
+    return objects;
+}
+
+hittable_list boeing_test_world_lights(){
+    hittable_list lights;
+
+    lights.add(make_shared<flip_face>(make_shared<xy_rect>(-5, 5, -5, 5, 40, shared_ptr<material>())));
+
+    return lights;
+}
+
+hittable_list cornell_klein_box() {
+    hittable_list objects;
+
+    auto red   = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(213, 343, 227, 332, 554, light)));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));
+
+    /*
+    shared_ptr<material> aluminum = make_shared<metal>(color(0.8, 0.85, 0.88), 0.0);
+    shared_ptr<hittable> box1 = make_shared<box>(point3(0,0,0), point3(165,330,165), aluminum);
+    box1 = make_shared<rotate_y>(box1, 15);
+    box1 = make_shared<translate>(box1, vec3(265,0,295));
+    objects.add(box1);
+
+    auto glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(190,90,190), 90 , glass));*/
+    auto glass = make_shared<dielectric>(1.5);
+    vec3 move_klein(300, 60, 200);
+    objects.add(make_shared<translate>(load_model_from_file("../models/klein_bottle.obj", glass, true), move_klein));
+
+    return objects;
+}
+
+hittable_list cornell_klein_box_lights(){
+    hittable_list lights;
+    lights.add(make_shared<xz_rect>(213, 343, 227, 332, 554, shared_ptr<material>()));
+    return lights;
+}
+
+
+hittable_list theodor_test1_world(){
+    hittable_list objects;
+
+    auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    auto metal_mat = make_shared<metal>(color(0.6, 0.6, 0.6), 0.3);
+    auto light = make_shared<diffuse_light>(color(1, 1, 1)*300);
+    int ground_size = 140;
+    objects.add(make_shared<xz_rect>(-ground_size/2., ground_size/2., -ground_size/2., ground_size/2., -8, grey));
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(-5, 5, -5, 5, 150, light)));
+    double camoffset0 = 60;
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(-5+camoffset0, 5+camoffset0, -5, 5, 150, light)));
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(-5, 5, -5+camoffset0, 5+camoffset0, 150, light)));
+    
+    vec3 displacement(-25, 0, 10);
+    shared_ptr<hittable> model = (make_shared<translate>(load_model_from_file("../models/from_theodor.obj", metal_mat, true), displacement));
+    objects.add(model);
+
+    return objects;
+}
+
+hittable_list theodor_test1_lights(){
+    hittable_list lights;
+
+    lights.add(make_shared<flip_face>(make_shared<xz_rect>(-5, 5, -5, 5, 150, shared_ptr<material>())));
+    double camoffset0 = 60;
+    lights.add(make_shared<flip_face>(make_shared<xz_rect>(-5+camoffset0, 5+camoffset0, -5, 5, 150, shared_ptr<material>())));
+    lights.add(make_shared<flip_face>(make_shared<xz_rect>(-5, 5, -5+camoffset0, 5+camoffset0, 150, shared_ptr<material>())));
+
+    return lights;
+}
 int main() {
     // image  settings
-    int samples_per_pixel = 4000;
-    int max_depth = 15;
+    int samples_per_pixel = 1600;
+    int max_depth = 10;
     double aspect_ratio = 16./9.;
-    const int image_width = 100;
+    const int image_width = 640;
 
-    int scene_to_render = 8;
+    int scene_to_render = 13;
 
-    const int N_THREADS = 12;
-    const int CHUNKS_PER_THREAD = 9;
+    const int N_THREADS = 10;
+    const int CHUNKS_PER_THREAD = 4;
 
     // scene and camera
     hittable_list world;
@@ -311,6 +449,7 @@ int main() {
     auto lights = make_shared<hittable_list>();
     point3 lookfrom, lookat;
     auto vfov = 40.0;
+    vec3 vup(0, 1, 0);
     auto aperture = 0.0;
     color background(0, 0, 0);
 
@@ -379,12 +518,54 @@ int main() {
             lookat = point3(278, 278, 0);
             vfov = 45.0;
             break;
+        case 9:
+            world = triangle_test();
+            lights = make_shared<hittable_list>(triangle_test_lights());
+            background = color(0,0,0);
+            lookfrom = point3(-4, 1, 2);
+            lookat = point3(0, 0, 1);
+            vup = vec3(0, 0, 1);
+            vfov = 40.0;
+            break;
+        case 10:
+            world = obj_loader_test();
+            lights = make_shared<hittable_list>(obj_loader_test_lights());
+            background = color(0.5,0.5,0.7);
+            lookfrom = point3(0, 0.5, 3);
+            lookat = point3(0, 0, 0);
+            vfov = 40.0;
+            break;
+        case 11:
+            vup = vec3(0, 0, 1);
+            world = boeing_test_world();
+            lights = make_shared<hittable_list>(boeing_test_world_lights());
+            background = color(0.7,0.7,0.9);
+            lookfrom = point3(0, -40, 20);
+            lookat = point3(0, 0, 0);
+            vfov = 40.0;
+            break;
+        case 12:
+            world = cornell_klein_box();
+            lights = make_shared<hittable_list>(cornell_klein_box_lights());
+            aspect_ratio = 1.0;
+            background = color(0,0,0);
+            lookfrom = point3(278, 278, -800);
+            lookat = point3(278, 278, 0);
+            vfov = 40.0;
+            break;
+        case 13:
+            world = theodor_test1_world();
+            lights = make_shared<hittable_list>(theodor_test1_lights());
+            background = color(0.7,0.7,0.9);
+            lookfrom = point3(40, 55, 40);
+            lookat = point3(-10, 5, 0);
+            vfov = 45.0;
+            break;
     }
 
     const int image_height = static_cast<int>(image_width/aspect_ratio);
     auto image = new color[image_height][image_width];
 
-    vec3 vup(0, 1, 0);
     auto dist_to_focus = 10;
     double cam_time0 = 0.0;
     double cam_time1 = 1.0;

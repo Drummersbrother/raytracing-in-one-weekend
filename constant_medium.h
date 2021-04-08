@@ -34,7 +34,7 @@ bool constant_medium::hit(const ray &r, double t_min, double t_max, hit_record &
     if (!boundary->hit(r, -infinity, infinity, rec1))
         return false;
 
-    if (!boundary->hit(r, rec1.t+0.0001, infinity, rec2))
+    if (!boundary->hit(r, rec1.t+0.000001, infinity, rec2))
         return false;
 
     if (rec1.t < t_min) rec1.t = t_min;

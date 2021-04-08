@@ -98,6 +98,14 @@ inline vec3 operator/(vec3 v, double t) {
     return (1/t) * v;
 }
 
+inline vec3 max(const vec3& v, const vec3& u){
+    return vec3(std::max(v.e[0], u.e[0]), std::max(v.e[1], u.e[1]), std::max(v.e[2], u.e[2]));
+}
+
+inline vec3 min(const vec3& v, const vec3& u){
+    return vec3(std::min(v.e[0], u.e[0]), std::min(v.e[1], u.e[1]), std::min(v.e[2], u.e[2]));
+}
+
 inline double dot(const vec3 &u, const vec3 &v) {
     return u.e[0] * v.e[0]
          + u.e[1] * v.e[1]

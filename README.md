@@ -13,10 +13,11 @@ The final scene of "Raytracing, the next week", rendered with 10k spp and 1920x1
 
 ### More features I want to explore
 * [CUDA acceleration, with or w/o OptiX](https://developer.nvidia.com/blog/accelerated-ray-tracing-cuda/), very cool.
-* Add more hittable primitives: triangles (and meshes), linear transformations, wireframes (long cylinders?), ray marched SDFs (thus fractals!)
-* Loading objects from simple formats like .obj, I believe there are simple header-only libraries for this.
+* Add more hittable primitives: (done!) triangles (and meshes), linear transformations, wireframes (long cylinders?), ray marched SDFs (thus fractals!)
+* Loading objects from simple formats like (simple version done) .obj, I believe there are simple header-only libraries for this.
 * Add BRDF support/more of them. Disney's uber-material BRDF?
 * Integrate with my old CUDA-based 2d fluid simulator, ray-march and render!
 * Metropolis/path space methods
 * Bidirectional path tracing
+* HDRi skyboxes
 
