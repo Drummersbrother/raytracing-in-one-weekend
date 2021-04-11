@@ -81,12 +81,18 @@ class image_texture: public texture {
         image_texture(): data(nullptr), width(0), height(0), bytes_per_scanline(0) {}
 
         image_texture(const char* filename){
-            auto components_per_pixel = bytes_per_pixel;
-            data = stbi_load(filename, &width, &height, &components_per_pixel, components_per_pixel);
+            auto components_per_pixel = 3;
+            std::cerr << "Loading image texture from: '" << filename << "' as ";
+            if (stbi_is_hdr(filename)){
+                std::cerr << "HDR file.\n";
+            } else {
+                std::cerr << "gamma-corrected file.\n";
+            }
+            data = stbi_loadf(filename, &width, &height, &components_per_pixel, components_per_pixel);
 
             if (!data){
                 std::cerr << "ERROR: Couldn't load texture image file: '" << filename << "'.\n";
-                width = height = 0;
+                exit(1);
             }
 
             bytes_per_scanline = bytes_per_pixel*width;
@@ -113,17 +119,59 @@ class image_texture: public texture {
             if (i >= width)  i = width-1;
             if (j >= height) j = height-1;
 
-            const auto color_scale = 1.0/255.0;
+            const auto color_scale = 1.0;// /255.0;
 
             auto pixel = data+j*bytes_per_scanline+i*bytes_per_pixel;
 
             return color(color_scale*pixel[0], color_scale*pixel[1], color_scale*pixel[2]);
         }
 
-    private:
-        unsigned char *data;
+    public:
+        float *data;
         int width, height;
         int bytes_per_scanline;
 };
 
+class roughness_from_sharpness_texture: public texture {
+    public:
+        roughness_from_sharpness_texture() {}
+
+        roughness_from_sharpness_texture(shared_ptr<texture> sharpness_map, double min_v, double max_v): sharpness_text(sharpness_map), 
+            l_min_val(log(min_v)), l_max_val(log(max_v)) {}
+
+        virtual color value(double u, double v, const point3& p) const override {
+            return color(1, 0, 0) * clamp(
+                    log(sharpness_text->value(u, v, p).length()+0.00001), l_min_val, l_max_val)
+                / (l_max_val-l_min_val);
+        }
+
+    public:
+        shared_ptr<texture> sharpness_text;
+    private: 
+        double l_min_val, l_max_val;
+};
+
+
+static void get_spherical_uv(const point3 &p, double& u, double&v){
+    // p: a given point on the sphere of radius one, centered at the origin.
+    // u: returned value [0,1] of angle around the Y axis from X=-1.
+    // v: returned value [0,1] of angle from Y=-1 to Y=+1.
+    //     <1 0 0> yields <0.50 0.50>       <-1  0  0> yields <0.00 0.50>
+    //     <0 1 0> yields <0.50 1.00>       < 0 -1  0> yields <0.50 0.00>
+    //     <0 0 1> yields <0.25 0.50>       < 0  0 -1> yields <0.75 0.50>
+
+    auto theta = acos(-p.y());
+    auto phi = atan2(-p.z(), p.x()) + pi;
+
+    u = phi / (2*pi);
+    v = theta / pi;
+}
+
+static vec3 from_spherical_uv(double u, double v){
+    double phi = 2*pi*u, theta = pi*v;
+    // THIS IS SUPER WEIRD?? Used only (AND KEEP IT THAT WAY) for environment importance sampling
+    phi -= pi;
+    
+    return vec3(cos(phi)*sin(theta), -cos(theta), -sin(phi)*sin(theta));
+}
 #endif

@@ -1,30 +1,9 @@
 #ifndef RTWEEKEND_STB_OBJ_LOADER_H
 #define RTWEEKEND_STB_OBJ_LOADER_H
 
-// Disable pedantic warnings for this external library.
-// GCC
-#ifdef __GNUC__
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wconversion"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#pragma GCC diagnostic ignored "-Wsign-compare"
-#pragma GCC diagnostic ignored "-Wunused-value"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wwrite-strings"
-
-#endif
-
-
-#define OBJL_IMPLEMENTATION
-#include "external/obj_loader.h"
-
-// Restore warning levels.
-// GCC
-#pragma GCC diagnostic pop
+#define TINYOBJLOADER_IMPLEMENTATION
+#define TINYOBJLOADER_USE_DOUBLE
+#include "external/tinyobjloader.h"
 
 #include <stdio.h>
 
@@ -33,91 +12,111 @@
 #include "material.h"
 #include "triangle.h"
 
+color _getcol(tinyobj::real_t* raws){
+    return color(raws[0], raws[1], raws[2]);
+}
+shared_ptr<material> get_mtl_mat(const tinyobj::material_t& reader_mat){
+    shared_ptr<texture> diffuse_a = make_shared<solid_color>(_getcol((tinyobj::real_t*)reader_mat.diffuse));
+    shared_ptr<texture> specular_a = make_shared<solid_color>(_getcol((tinyobj::real_t*)reader_mat.specular));
+    shared_ptr<texture> emissive_a = make_shared<solid_color>(_getcol((tinyobj::real_t*)reader_mat.emission));
+    shared_ptr<texture> transparency_a = make_shared<solid_color>(_getcol((tinyobj::real_t*)reader_mat.transmittance)*(1.-reader_mat.dissolve));
+    shared_ptr<texture> sharpness_a = make_shared<solid_color>(color(1, 0, 0)*reader_mat.shininess);
+
+    return make_shared<mtl_material>(
+            diffuse_a, 
+            specular_a, 
+            emissive_a, 
+            transparency_a, 
+            sharpness_a, 
+            reader_mat.illum);
+}
+
 shared_ptr<hittable> load_model_from_file(std::string filename, shared_ptr<material> model_material, bool shade_smooth){
     // from https://github.com/mojobojo/OBJLoader/blob/master/example.cc
     std::cerr << "Loading .obj file '" << filename << "'." << std::endl;
-    FILE *f = std::fopen(filename.c_str(), "rb");
-    objl_obj_file ObjFile;
 
-    if (f) {
-        fseek(f, 0, SEEK_END);
-        long int FileSize = ftell(f);
-        ftell(f);
-        rewind(f);
+    std::string inputfile = filename;
+    // By default searches for mtl file in same dir as obj file, and triangulates
+    tinyobj::ObjReaderConfig reader_config;
 
-        char* FileData = (char *) malloc(FileSize+1);
-        fread(FileData, 1, FileSize, f);
-        fclose(f);
+    tinyobj::ObjReader reader;
 
-        FileData[FileSize] = 0;
-
-        objl_LoadObjMalloc(FileData, &ObjFile);
-/*
-        printf("Loaded OBJ File:\n");
-        printf("    o:        %s\n", ObjFile.o);
-        printf("    v_count:  %d\n", ObjFile.v_count);
-        for (int i = 0; i < ObjFile.v_count; ++i) {
-            printf("        x %f y %f z %f\n", ObjFile.v[i].x, ObjFile.v[i].y, ObjFile.v[i].z);
-        }
-        printf("\n");
-
-        printf("    vt_count: %d\n", ObjFile.vt_count);
-        for (int i = 0; i < ObjFile.vt_count; ++i) {
-            printf("        x %f y %f\n", ObjFile.vt[i].x, ObjFile.vt[i].y);
-        }
-        printf("\n");
-
-        printf("    vn_count: %d\n", ObjFile.vn_count);
-        for (int i = 0; i < ObjFile.vn_count; ++i) {
-            printf("        x %f y %f z %f\n", ObjFile.vn[i].x, ObjFile.vn[i].y, ObjFile.vn[i].z);
-        }
-        printf("\n");
-
-        printf("    s:        %s\n", ObjFile.s);
-
-        printf("    f_count:  %d\n", ObjFile.f_count);
-        for (int i = 0; i < ObjFile.f_count; ++i) {
-            printf("    f%d\n", i);
-            printf("        0:\n");
-            printf("            vertex:  %d\n", ObjFile.f[i].f0.vertex);
-            printf("            texture: %d\n", ObjFile.f[i].f0.texture);
-            printf("            normal:  %d\n", ObjFile.f[i].f0.normal);
-            printf("        1:\n");
-            printf("            vertex:  %d\n", ObjFile.f[i].f1.vertex);
-            printf("            texture: %d\n", ObjFile.f[i].f1.texture);
-            printf("            normal:  %d\n", ObjFile.f[i].f1.normal);
-            printf("        2:\n");
-            printf("            vertex:  %d\n", ObjFile.f[i].f2.vertex);
-            printf("            texture: %d\n", ObjFile.f[i].f2.texture);
-            printf("            normal:  %d\n", ObjFile.f[i].f2.normal);
-        }
-        printf("\n");
-        */
-
-        hittable_list triangles;
-        for (int i = 0; i < ObjFile.f_count; ++i) {
-            auto face = ObjFile.f[i];
-            vec3 v0, v1, v2;
-            auto objl_v0 = ObjFile.v[face.f0.vertex-1]; v0 = vec3(objl_v0.x, objl_v0.y, objl_v0.z);
-            auto objl_v1 = ObjFile.v[face.f1.vertex-1]; v1 = vec3(objl_v1.x, objl_v1.y, objl_v1.z);
-            auto objl_v2 = ObjFile.v[face.f2.vertex-1]; v2 = vec3(objl_v2.x, objl_v2.y, objl_v2.z);
-            vec3 vn0, vn1, vn2;
-            // what should the order be??
-            auto objl_vn0 = ObjFile.vn[face.f0.normal-1]; vn0 = vec3(objl_vn0.x, objl_vn0.y, objl_vn0.z);
-            auto objl_vn1 = ObjFile.vn[face.f1.normal-1]; vn1 = vec3(objl_vn1.x, objl_vn1.y, objl_vn1.z);
-            auto objl_vn2 = ObjFile.vn[face.f2.normal-1]; vn2 = vec3(objl_vn2.x, objl_vn2.y, objl_vn2.z);
-
-            triangles.add(make_shared<triangle>(v0, v1, v2, vn0, vn1, vn2, shade_smooth, model_material));
-        }
-        
-        objl_FreeObj(&ObjFile);
-
-        return make_shared<bvh_node>(triangles, 0, 1);
-
-    } else {
-        std::cerr << "Could not find .obj file at '" + filename + "'." << std::endl;
-        assert(0);
+    if (!reader.ParseFromFile(inputfile, reader_config)) {
+      if (!reader.Error().empty()) {
+          std::cerr << "TinyObjReader error: " << reader.Error();
+      }
+      exit(1);
     }
+
+    if (!reader.Warning().empty()) {
+      std::cerr << "TinyObjReader warning: " << reader.Warning();
+    }
+
+    auto& attrib = reader.GetAttrib();
+    auto& shapes = reader.GetShapes();
+    auto& raw_materials = reader.GetMaterials();
+
+    std::vector<shared_ptr<material>> converted_mats;
+    for(auto& raw_mat: raw_materials){
+        converted_mats.push_back(get_mtl_mat(raw_mat));
+    }
+
+    const bool use_mtl_file = (raw_materials.size() != 0);
+
+    hittable_list model_output;
+
+    // Loop over shapes
+    for (size_t s = 0; s < shapes.size(); s++) {
+         
+        hittable_list shape_triangles;
+        // Loop over faces(polygon)
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+            const int fv = 3; assert(shapes[s].mesh.num_face_vertices[f]==fv);
+
+            vec3 tri_v[3];
+            vec3 tri_vn[3];
+
+
+            // Loop over vertices in the face.
+            for (size_t v = 0; v < 3; v++) {
+                // access to vertex
+                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+                tinyobj::real_t vx = attrib.vertices[3*size_t(idx.vertex_index)+0];
+                tinyobj::real_t vy = attrib.vertices[3*size_t(idx.vertex_index)+1];
+                tinyobj::real_t vz = attrib.vertices[3*size_t(idx.vertex_index)+2];
+                
+                tri_v[v] = vec3(vx, vy, vz);
+     
+                // Check if `normal_index` is zero or positive. negative = no normal data
+                if (idx.normal_index >= 0) {
+                    tinyobj::real_t nx = attrib.normals[3*size_t(idx.normal_index)+0];
+                    tinyobj::real_t ny = attrib.normals[3*size_t(idx.normal_index)+1];
+                    tinyobj::real_t nz = attrib.normals[3*size_t(idx.normal_index)+2];
+
+                    tri_vn[v] = vec3(nx, ny, nz);
+                } else {
+                    assert(0);
+                }
+            }
+            shared_ptr<material> tri_mat;
+            if (use_mtl_file){
+                tri_mat = converted_mats[shapes[s].mesh.material_ids[f]];
+            } else {
+                tri_mat = model_material;
+            }
+            shape_triangles.add(make_shared<triangle>(
+                tri_v[0], tri_v[1], tri_v[2], 
+                tri_vn[0], tri_vn[1], tri_vn[2], 
+                shade_smooth, tri_mat));
+
+            index_offset += fv;
+        }
+
+        model_output.add(make_shared<bvh_node>(shape_triangles, 0, 1));
+    }
+
+    return make_shared<bvh_node>(model_output, 0, 1);
 }
 
 #endif

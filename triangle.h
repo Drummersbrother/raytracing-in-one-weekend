@@ -22,7 +22,7 @@ class triangle: public hittable {
             smooth_normals = smooth_shading;
             double a=(v0-v1).length(), b=(v1-v2).length(), c=(v2-v0).length();
             double s=(a+b+c)/2.; area = sqrt(fabs(s*(s-a)*(s-b)*(s-c)));
-            middle_normal = cross(v0-v1, v0-v2);
+            middle_normal = unit_vector(cross(v0-v1, v0-v2));
         }
         virtual bool hit(const ray& r, double t_min, double t_max, hit_record& rec) const override;
         virtual bool bounding_box(double time0, double time1, aabb& output_box) const override;
@@ -69,16 +69,14 @@ bool triangle::hit(const ray& r, double t_min, double t_max, hit_record& rec) co
     rec.mat_ptr = mat_ptr;
 
     rec.front_face = true;
+    vec3 normal = middle_normal;
     if (smooth_normals){
         double a=u, b=v, c=(1-u-v);
         // What does u and v map to?
-        auto normal = a*vert_normals[1]+b*vert_normals[2]+c*vert_normals[0];
-        rec.front_face = true;
-        rec.set_face_normal(r, (det>0)?normal:-normal);
-    } else {
-        rec.set_face_normal(r, (det>0)? middle_normal:-middle_normal);
+        normal = a*vert_normals[1]+b*vert_normals[2]+c*vert_normals[0];
     }
-    
+
+    rec.set_face_normal(r, (det>=-EPS)? normal:-normal);
     return true;
 
 }
@@ -96,7 +94,15 @@ double triangle::pdf_value(const point3& o, const vec3& v) const {
     if (!this->hit(ray(o, v), EPS, infinity, rec))
         return 0;
 
-    return  1. / area;
+    // from https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=4121581
+    vec3 R1 = verts[0]-o, R2=verts[1]-o, R3=verts[2]-o;
+    double r1=R1.length(), r2=R2.length(), r3=R3.length();
+    double N = dot(R1, cross(R2, R3));
+    double D = r1*r2*r3 + dot(R1, R2)*r3 + dot(R1, R3)*r2 + dot(R2, R3)*r3;
+
+    double omega = atan2(N, D);
+
+    return 1./omega;
 }
 
 vec3 triangle::random(const point3& o) const {

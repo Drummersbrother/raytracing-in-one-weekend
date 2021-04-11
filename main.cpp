@@ -22,9 +22,10 @@
 
 color ray_color(
         const ray& r, 
-        const color& background, 
+        const shared_ptr<texture>& background, 
+        const shared_ptr<pdf>& background_pdf, 
         const hittable& world, 
-        shared_ptr<hittable> lights, 
+        const shared_ptr<hittable>& lights, 
         int depth) {
     hit_record rec;
     
@@ -33,7 +34,9 @@ color ray_color(
         return color(0, 0, 0);
     }
     if(!world.hit(r, 0.000001, infinity, rec)){
-        return background;
+        auto unit_dir = unit_vector(r.direction());
+        double u, v; get_spherical_uv(unit_dir, u, v);
+        return background->value(u, v, unit_dir);
     }
 
     scatter_record srec;
@@ -45,18 +48,19 @@ color ray_color(
 
     // no importance sampling
     if (srec.is_specular){
-        return srec.attenuation * ray_color(srec.specular_ray, background, world, lights, depth-1);
+        return srec.attenuation * ray_color(srec.specular_ray, background, background_pdf, world, lights, depth-1);
     }
 
     auto light_ptr = make_shared<hittable_pdf>(lights, rec.p);
-    mixture_pdf p(light_ptr, srec.pdf_ptr, 0.8);
+    mixture_pdf p_objs(light_ptr, srec.pdf_ptr, 0.5);
+    mixture_pdf p(make_shared<mixture_pdf>(p_objs), background_pdf, 0.8);
 
     ray scattered = ray(rec.p, p.generate(), r.time());
     auto pdf_val = p.value(scattered.direction());
 
     return emitted + 
         srec.attenuation * rec.mat_ptr->scattering_pdf(r, rec, scattered)
-                         * ray_color(scattered, background, world, lights, depth-1) / pdf_val;
+                         * ray_color(scattered, background, background_pdf, world, lights, depth-1) / pdf_val;
 }
 
 hittable_list rt_iow_final_scene() {
@@ -326,9 +330,9 @@ hittable_list obj_loader_test(){
     auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
     auto light = make_shared<diffuse_light>(color(1, 1, 1)*10);
     objects.add(make_shared<xz_rect>(-10, 10, -10, 10, -1, grey));
-    objects.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, light)));
+    //objects.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, light)));
     
-    objects.add(load_model_from_file("../models/suzanne.obj", grey, true));
+    objects.add(load_model_from_file("../models/suzanne.obj", grey, false));
 
     return objects;
 }
@@ -336,7 +340,7 @@ hittable_list obj_loader_test(){
 hittable_list obj_loader_test_lights(){
     hittable_list lights;
 
-    lights.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, shared_ptr<material>())));
+    //lights.add(make_shared<flip_face>(make_shared<xz_rect>(-1, 1, 2, 3, 4, shared_ptr<material>())));
 
     return lights;
 }
@@ -400,7 +404,6 @@ hittable_list cornell_klein_box_lights(){
     return lights;
 }
 
-
 hittable_list theodor_test1_world(){
     hittable_list objects;
 
@@ -434,11 +437,11 @@ hittable_list theodor_test1_lights(){
 int main() {
     // image  settings
     int samples_per_pixel = 1600;
-    int max_depth = 10;
+    int max_depth = 16;
     double aspect_ratio = 16./9.;
-    const int image_width = 640;
+    const int image_width = 1920;
 
-    int scene_to_render = 13;
+    int scene_to_render = 1;
 
     const int N_THREADS = 10;
     const int CHUNKS_PER_THREAD = 4;
@@ -451,13 +454,15 @@ int main() {
     auto vfov = 40.0;
     vec3 vup(0, 1, 0);
     auto aperture = 0.0;
-    color background(0, 0, 0);
+
+    auto background_skybox = make_shared<image_texture>("../models/christmas_studio_2k.hdr");
+    shared_ptr<texture> background = background_skybox;
+    shared_ptr<pdf> background_pdf = make_shared<image_pdf>(background_skybox);
 
     switch (scene_to_render) {
         case 1:
             world = rt_iow_final_scene();
             lights = make_shared<hittable_list>(rt_iow_final_scene_lights());
-            background = color(0.70, 0.80, 1.00);
             lookfrom = point3(13,2,3);
             lookat = point3(0,0,0);
             vfov = 20.0;
@@ -496,8 +501,8 @@ int main() {
         case 6:
             world = cornell_box();
             lights = make_shared<hittable_list>(cornell_box_lights());
+            background = make_shared<solid_color>(color(0, 0, 0));
             aspect_ratio = 1.0;
-            background = color(0,0,0);
             lookfrom = point3(278, 278, -800);
             lookat = point3(278, 278, 0);
             vfov = 40.0;
@@ -513,7 +518,6 @@ int main() {
         case 8:
             world = rt_tnw_final_scene();
             lights = make_shared<hittable_list>(rt_tnw_final_scene_lights());
-            background = color(0.0, 0.0, 0.0);
             lookfrom = point3(478, 278, -600);
             lookat = point3(278, 278, 0);
             vfov = 45.0;
@@ -521,7 +525,6 @@ int main() {
         case 9:
             world = triangle_test();
             lights = make_shared<hittable_list>(triangle_test_lights());
-            background = color(0,0,0);
             lookfrom = point3(-4, 1, 2);
             lookat = point3(0, 0, 1);
             vup = vec3(0, 0, 1);
@@ -530,16 +533,14 @@ int main() {
         case 10:
             world = obj_loader_test();
             lights = make_shared<hittable_list>(obj_loader_test_lights());
-            background = color(0.5,0.5,0.7);
-            lookfrom = point3(0, 0.5, 3);
-            lookat = point3(0, 0, 0);
-            vfov = 40.0;
+            lookfrom = point3(0, 0.5, -3);
+            lookat = point3(0, -0.1, 0);
+            vfov = 45.0;
             break;
         case 11:
             vup = vec3(0, 0, 1);
             world = boeing_test_world();
             lights = make_shared<hittable_list>(boeing_test_world_lights());
-            background = color(0.7,0.7,0.9);
             lookfrom = point3(0, -40, 20);
             lookat = point3(0, 0, 0);
             vfov = 40.0;
@@ -548,7 +549,6 @@ int main() {
             world = cornell_klein_box();
             lights = make_shared<hittable_list>(cornell_klein_box_lights());
             aspect_ratio = 1.0;
-            background = color(0,0,0);
             lookfrom = point3(278, 278, -800);
             lookat = point3(278, 278, 0);
             vfov = 40.0;
@@ -556,7 +556,14 @@ int main() {
         case 13:
             world = theodor_test1_world();
             lights = make_shared<hittable_list>(theodor_test1_lights());
-            background = color(0.7,0.7,0.9);
+            lookfrom = point3(40, 55, 40);
+            lookat = point3(-10, 5, 0);
+            vfov = 45.0;
+            break;
+        case 14:
+            auto grey = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+            auto central_sphere = make_shared<sphere>(vec3(), 1, grey);
+            world.add(central_sphere);
             lookfrom = point3(40, 55, 40);
             lookat = point3(-10, 5, 0);
             vfov = 45.0;
@@ -598,7 +605,7 @@ int main() {
                 auto u = (i+random_double()) / (image_width-1);
                 auto v = (j+random_double()) / (image_height-1);
                 ray r = cam.get_ray(u, v);
-                color ray_contribution = ray_color(r, background, world, lights, max_depth);
+                color ray_contribution = ray_color(r, background, background_pdf, world, lights, max_depth);
                 zero_nan_vals(ray_contribution);
                 pixel_color += ray_contribution;
             }

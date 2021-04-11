@@ -40,6 +40,7 @@ inline int random_int(int min, int max){
 inline double clamp(double x, double min, double max) {
     if (x < min) return min;
     if (x > max) return max;
+    if (x != x) return 0;
     return x;
 }
 // Common Headers
